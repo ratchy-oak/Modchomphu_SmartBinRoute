@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Bin Route - Bangkok</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/fastpriorityqueue@0.7.2/fastpriorityqueue.min.js"></script>
+
+    <style>
+        :root {
+            --panel-bg: rgba(255, 255, 255, 0.95);
+            --panel-border: rgba(255, 255, 255, 0.5);
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --accent-color: #198754;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #0dcaf0;
+        }
+
+        body {
+            font-family: 'Sarabun', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1001;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .top-bar h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .top-bar-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .top-bar-actions button {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .top-bar-actions button:hover {
+            color: var(--accent-color);
+            transform: scale(1.1);
+        }
+
+        .dashboard-panel {
+            position: absolute;
+            top: 80px;
+            left: 1.5rem;
+            width: 420px;
+            max-height: calc(100vh - 100px);
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .dashboard-panel.hidden {
+            transform: translateX(-110%);
+        }
+
+        .route-panel {
+            position: absolute;
+            top: 80px;
+            left: 1.5rem;
+            width: 450px;
+            max-height: calc(100vh - 100px);
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .route-panel.hidden {
+            transform: translateX(-110%);
+        }
+
+        .panel-section {
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .panel-section:last-child {
+            border-bottom: none;
+        }
+
+        .panel-section h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(25, 135, 84, 0.1), rgba(25, 135, 84, 0.05));
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(25, 135, 84, 0.2);
+            text-align: center;
+        }
+
+        .stat-card.danger {
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border-color: rgba(220, 53, 69, 0.3);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));
+            border-color: rgba(255, 193, 7, 0.3);
+        }
+
+        .stat-card .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card.danger .stat-value { color: var(--danger-color); }
+        .stat-card.warning .stat-value { color: var(--warning-color); }
+        .stat-card .stat-value { color: var(--accent-color); }
+
+        .stat-card .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .efficiency-ring {
+            text-align: center;
+            margin: 2rem 0;
+        }
+
+        .efficiency-ring-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+        }
+
+        .efficiency-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .efficiency-value .value {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            line-height: 1;
+        }
+
+        .efficiency-value .unit {
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .efficiency-value .label {
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+
+        .district-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .district-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .district-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .district-info {
+            flex: 1;
+        }
+
+        .district-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .district-density {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .district-distance {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--accent-color), #20c997);
+            border: none;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(25, 135, 84, 0.4);
+        }
+
+        .route-header {
+            background: linear-gradient(135deg, var(--accent-color), #20c997);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 1rem 1rem 0 0;
+        }
+
+        .route-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .route-header .next-stop {
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            opacity: 0.9;
+        }
+
+        .bin-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--accent-color);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .bin-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .bin-card.high-level {
+            border-left-color: var(--danger-color);
+            background: linear-gradient(90deg, rgba(220, 53, 69, 0.05), white);
+        }
+
+        .bin-card.mid-level {
+            border-left-color: var(--warning-color);
+            background: linear-gradient(90deg, rgba(255, 193, 7, 0.05), white);
+        }
+
+        .bin-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .bin-location {
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .bin-level {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .bin-level.high { color: var(--danger-color); }
+        .bin-level.mid { color: var(--warning-color); }
+        .bin-level.low { color: var(--accent-color); }
+
+        .bin-progress {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 1rem;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+
+        .bin-progress-bar {
+            height: 100%;
+            transition: width 0.3s ease;
+            border-radius: 1rem;
+        }
+
+        .bin-progress-bar.high { background: linear-gradient(90deg, var(--danger-color), #ff6b6b); }
+        .bin-progress-bar.mid { background: linear-gradient(90deg, var(--warning-color), #ffb84d); }
+        .bin-progress-bar.low { background: linear-gradient(90deg, var(--accent-color), #20c997); }
+
+        .route-info-panel {
+            background: linear-gradient(135deg, rgba(25, 135, 84, 0.1), rgba(32, 201, 151, 0.1));
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .capacity-indicator {
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 1rem;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .capacity-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), var(--warning-color));
+            transition: width 0.3s ease;
+        }
+
+        .floating-truck {
+            position: absolute;
+            bottom: 2rem;
+            right: 2rem;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 200px;
+        }
+
+        .truck-icon {
+            font-size: 3rem;
+            color: var(--info-color);
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .truck-status {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .truck-capacity {
+            font-size: 1.25rem;
+            font-weight: 700;
+            text-align: center;
+            color: var(--text-primary);
+        }
+
+        .legend {
+            position: absolute;
+            top: 100px;
+            right: 1.5rem;
+            background: white;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .legend h4 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .legend-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .legend-icon i {
+            font-size: 0.9rem;
+        }
+
+        .legend-icon.high { background: var(--danger-color); color: white; }
+        .legend-icon.mid { background: var(--warning-color); color: white; }
+        .legend-icon.low { background: var(--accent-color); color: white; }
+        .legend-icon.truck { background: var(--info-color); color: white; }
+
+        .spinner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10001;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .spinner-overlay.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-panel, .route-panel {
+                left: 1rem;
+                right: 1rem;
+                width: auto;
+            }
+            
+            .floating-truck {
+                bottom: 1rem;
+                right: 1rem;
+            }
+            
+            .legend {
+                top: 80px;
+                right: 1rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-panel:not(.force-open),
+            .route-panel:not(.force-open) {
+                transform: translateX(-110%) !important;
+            }
+        }
+
+        .panel-toggle-btn {
+            position: fixed;
+            top: 90px;
+            left: 15px;
+            z-index: 3000;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 1.4rem;
+            color: #198754;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+
+        @media (min-width: 769px) {
+            .panel-toggle-btn {
+                display: none;
+            }
+        }
+
+        
+    </style>
+</head>
+<body>
+    <button id="toggle-panel-btn" class="panel-toggle-btn">
+        <i class="fa-solid fa-bars"></i>
+    </button>
+
+    <div class="top-bar">
+        <h1>
+            <i class="fa-solid fa-location-dot"></i>
+            Smart Bin Route
+        </h1>
+        <div class="top-bar-actions">
+            <button id="search-btn" title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
+            <button id="notification-btn" title="Notifications"><i class="fa-solid fa-bell"></i></button>
+            <button id="settings-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <!-- Dashboard Panel -->
+    <div class="dashboard-panel" id="dashboard-panel">
+        <div class="panel-section">
+            <div class="stats-grid">
+                <div class="stat-card danger">
+                    <div class="stat-value" id="high-trash-count">0</div>
+                    <div class="stat-label">HIGH TRASH LEVEL</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-value" id="mid-trash-count">0</div>
+                    <div class="stat-label">MID TRASH LEVEL</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="low-trash-count">0</div>
+                    <div class="stat-label">LOW TRASH LEVEL</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="total-bins">0</div>
+                    <div class="stat-label">TOTAL BINS</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <h3>CITY AVERAGE</h3>
+            <div class="efficiency-ring">
+                <div class="efficiency-ring-container">
+                    <svg width="200" height="200">
+                        <circle cx="100" cy="100" r="80" fill="none" stroke="#e9ecef" stroke-width="20"/>
+                        <circle id="efficiency-circle" cx="100" cy="100" r="80" fill="none" stroke="#198754" stroke-width="20" 
+                                stroke-dasharray="502.65" stroke-dashoffset="125.66" 
+                                transform="rotate(-90 100 100)" stroke-linecap="round"/>
+                    </svg>
+                    <div class="efficiency-value">
+                        <div class="value" id="efficiency-value">1.2K</div>
+                        <div class="unit">kg/km²</div>
+                        <div class="label">85% EFFICIENT</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <h3>LOW WASTE DENSITY DISTRICTS BKK</h3>
+            <div class="district-list" id="district-list"></div>
+        </div>
+
+        <div class="panel-section">
+            <div class="action-buttons">
+                <button class="btn-primary-custom" id="view-routes-btn">
+                    <i class="fa-solid fa-route"></i>
+                    VIEW OPTIMIZED ROUTES
+                </button>
+                <button class="btn-primary-custom" id="sustainability-btn">
+                    <i class="fa-solid fa-leaf"></i>
+                    SUSTAINABILITY REPORT
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Route Panel -->
+    <div class="route-panel hidden" id="route-panel">
+        <div class="route-header">
+            <h2>
+                <i class="fa-solid fa-route"></i>
+                ROUTE MAP
+            </h2>
+            <div class="next-stop" id="next-stop-text">
+                <i class="fa-solid fa-leaf"></i>
+                NEXT STOP: SOI SUKHUMVIT 62 / BIN 5-A
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <h3>COLLECTION ROUTE</h3>
+            <div id="bin-route-list"></div>
+
+            <div class="route-info-panel">
+                <div class="info-row">
+                    <span class="info-label">EST. ARRIVAL</span>
+                    <span class="info-value" id="est-arrival">2:45 PM</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">DISTANCE</span>
+                    <span class="info-value" id="route-distance">1.8 km</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">CAPACITY</span>
+                    <span class="info-value" id="truck-capacity-text">65% FULL</span>
+                </div>
+                <div class="capacity-indicator">
+                    <div class="capacity-bar" id="capacity-bar" style="width: 65%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <button class="btn-primary-custom" id="back-to-dashboard">
+                <i class="fa-solid fa-arrow-left"></i>
+                BACK TO DASHBOARD
+            </button>
+        </div>
+    </div>
+
+    <!-- Floating Truck Status -->
+    <div class="floating-truck" id="floating-truck" style="display: none;">
+        <div class="truck-icon">
+            <i class="fa-solid fa-truck"></i>
+        </div>
+        <div class="truck-status">GARBAGE TRUCK</div>
+        <div class="truck-capacity">65% FULL</div>
+        <div class="capacity-indicator">
+            <div class="capacity-bar" style="width: 65%"></div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend">
+        <h4>ROUTE MAP LEGEND</h4>
+        <div class="legend-item">
+            <div class="legend-icon high">
+                <i class="fa-solid fa-trash"></i>
+            </div>
+            <span>HIGH TRASH LEVEL</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon mid">
+                <i class="fa-solid fa-trash"></i>
+            </div>
+            <span>MID TRASH LEVEL</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon low">
+                <i class="fa-solid fa-trash"></i>
+            </div>
+            <span>LOW TRASH LEVEL</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon truck">
+                <i class="fa-solid fa-truck"></i>
+            </div>
+            <span>GARBAGE TRUCK LOCATION</span>
+        </div>
+    </div>
+
+    <div class="spinner-overlay" id="spinner">
+        <div class="spinner-border text-light" style="width: 4rem; height: 4rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const BANGKOK_CENTER = [13.7563, 100.5018];
+        const DEFAULT_ZOOM = 12;
+
+        let map;
+        let graph = { nodes: {}, edges: [] };
+        let bins = [];
+        let districts = [];
+        let routePolyline = null;
+        let binMarkers = [];
+        let truckMarker = null;
+        let currentRoute = [];
+        let currentBinIndex = 0;
+
+        const bangkokDistricts = [
+            // --- Western Bangkok ---
+            { name: 'Bang Khun Thian', lat: 13.6550, lon: 100.4120, density: 390, bins: 1 },
+            { name: 'Phasi Charoen',  lat: 13.7000, lon: 100.4350, density: 375, bins: 1 },
+            { name: 'Thon Buri',      lat: 13.7300, lon: 100.4600, density: 360, bins: 1 },
+            { name: 'Bangkok Noi',    lat: 13.7600, lon: 100.4800, density: 350, bins: 1 },
+            { name: 'Dusit',          lat: 13.7780, lon: 100.5120, density: 340, bins: 1 },
+
+            // --- Central Bangkok ---
+            { name: 'Pathumwan',      lat: 13.7450, lon: 100.5300, density: 300, bins: 1 },
+            { name: 'Ratchathewi',    lat: 13.7580, lon: 100.5370, density: 285, bins: 1 },
+            { name: 'Chatuchak',      lat: 13.8200, lon: 100.5500, density: 270, bins: 1 },
+            { name: 'Lad Phrao',      lat: 13.7850, lon: 100.6100, density: 260, bins: 1 },
+            { name: 'Bang Kapi',      lat: 13.7700, lon: 100.6400, density: 250, bins: 1 },
+
+            // --- Eastern Bangkok ---
+            { name: 'Saphan Sung',    lat: 13.7760, lon: 100.6900, density: 200, bins: 1 },
+            { name: 'Lad Krabang',    lat: 13.7200, lon: 100.7500, density: 180, bins: 1 },
+            { name: 'Min Buri',       lat: 13.8000, lon: 100.7700, density: 160, bins: 1 },
+            { name: 'Khlong Sam Wa',  lat: 13.8250, lon: 100.8100, density: 140, bins: 1 },
+            { name: 'Nong Chok',      lat: 13.8350, lon: 100.8500, density: 120, bins: 1 }
+        ];
+
+        const sampleBins = [
+            // --- Western Bangkok (start) ---
+            { id: 'BIN-1A', name: 'Bang Khun Thian 45', lat: 13.6550, lon: 100.4120, level: 96, priority: 'high', district: 'Bang Khun Thian' },
+            { id: 'BIN-2A', name: 'Phasi Charoen 24', lat: 13.7000, lon: 100.4350, level: 93, priority: 'high', district: 'Phasi Charoen' },
+            { id: 'BIN-3A', name: 'Thonburi Road 9', lat: 13.7300, lon: 100.4600, level: 91, priority: 'high', district: 'Thon Buri' },
+            { id: 'BIN-4A', name: 'Bangkok Noi Pier', lat: 13.7600, lon: 100.4800, level: 88, priority: 'high', district: 'Bangkok Noi' },
+            { id: 'BIN-5A', name: 'Dusit District Office', lat: 13.7780, lon: 100.5120, level: 86, priority: 'high', district: 'Dusit' },
+
+            // --- Central Bangkok ---
+            { id: 'BIN-6A', name: 'Pathumwan Center', lat: 13.7450, lon: 100.5300, level: 80, priority: 'mid', district: 'Pathumwan' },
+            { id: 'BIN-7A', name: 'Ratchathewi Road', lat: 13.7580, lon: 100.5370, level: 77, priority: 'mid', district: 'Ratchathewi' },
+            { id: 'BIN-8A', name: 'Chatuchak Park', lat: 13.8200, lon: 100.5500, level: 74, priority: 'mid', district: 'Chatuchak' },
+            { id: 'BIN-9A', name: 'Lad Phrao 101', lat: 13.7850, lon: 100.6100, level: 71, priority: 'mid', district: 'Lad Phrao' },
+            { id: 'BIN-10A', name: 'Bang Kapi 33', lat: 13.7700, lon: 100.6400, level: 67, priority: 'mid', district: 'Bang Kapi' },
+
+            // --- Eastern Bangkok ---
+            { id: 'BIN-11A', name: 'Saphan Sung Soi 14', lat: 13.7760, lon: 100.6900, level: 63, priority: 'low', district: 'Saphan Sung' },
+            { id: 'BIN-12A', name: 'Lad Krabang Road', lat: 13.7200, lon: 100.7500, level: 59, priority: 'low', district: 'Lad Krabang' },
+            { id: 'BIN-13A', name: 'Min Buri Market', lat: 13.8000, lon: 100.7700, level: 55, priority: 'low', district: 'Min Buri' },
+            { id: 'BIN-14A', name: 'Khlong Sam Wa Canal', lat: 13.8250, lon: 100.8100, level: 51, priority: 'low', district: 'Khlong Sam Wa' },
+            { id: 'BIN-15A', name: 'Nong Chok Temple', lat: 13.8350, lon: 100.8500, level: 48, priority: 'low', district: 'Nong Chok' }
+        ];
+
+
+        const spinner = document.getElementById('spinner');
+        const dashboardPanel = document.getElementById('dashboard-panel');
+        const routePanel = document.getElementById('route-panel');
+        const viewRoutesBtn = document.getElementById('view-routes-btn');
+        const backToDashboardBtn = document.getElementById('back-to-dashboard');
+        const districtList = document.getElementById('district-list');
+        const binRouteList = document.getElementById('bin-route-list');
+        const floatingTruck = document.getElementById('floating-truck');
+
+        async function init() {
+            initMap();
+            loadDistricts();
+            loadBins();
+            
+            // Load OSM road network data
+            try {
+                showSpinner();
+                console.log('📡 Loading Bangkok road network...');
+                
+                const response = await fetch('export.geojson');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const osmData = await response.json();
+                
+                if (osmData && osmData.features && osmData.features.length > 0) {
+                    console.log('📦 Processing', osmData.features.length, 'road features...');
+                    buildGraph(osmData);
+                    console.log('✅ Graph loaded:', Object.keys(graph.nodes).length, 'nodes,', graph.edges.length, 'edges');
+                } else {
+                    console.warn('⚠️ No features found in GeoJSON');
+                }
+                
+                hideSpinner();
+            } catch (error) {
+                console.error('❌ Failed to load OSM data:', error);
+                console.warn('⚠️ Using straight-line routing as fallback');
+                hideSpinner();
+            }
+            
+            renderDashboard();
+            initEventListeners();
+            console.log('✅ App initialized successfully');
+        }
+
+        function initMap() {
+            map = L.map('map', {
+                center: BANGKOK_CENTER,
+                zoom: DEFAULT_ZOOM,
+                minZoom: 11,
+                maxZoom: 18,
+                zoomControl: false
+            });
+            
+            L.control.zoom({ position: 'topright' }).addTo(map);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        function loadDistricts() {
+            districts = bangkokDistricts.map(d => ({
+                ...d,
+                distance: calculateDistance(BANGKOK_CENTER[0], BANGKOK_CENTER[1], d.lat, d.lon)
+            }));
+            districts.sort((a, b) => a.density - b.density);
+        }
+
+        function loadBins() {
+            bins = sampleBins.map(bin => ({
+                ...bin,
+                collected: false
+            }));
+
+            bins.forEach(bin => {
+                let iconColor;
+                
+                if (bin.priority === 'high') {
+                    iconColor = 'red';
+                } else if (bin.priority === 'mid') {
+                    iconColor = 'orange';
+                } else {
+                    iconColor = 'green';
+                }
+                
+                const iconUrl = `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${iconColor}.png`;
+                
+                const marker = L.marker([bin.lat, bin.lon], {
+                    icon: L.icon({
+                        iconUrl: iconUrl,
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34]
+                    })
+                }).addTo(map);
+
+                const priorityText = bin.priority === 'high' ? 'HIGH LEVEL' : 
+                                    bin.priority === 'mid' ? 'MID LEVEL' : 'LOW LEVEL';
+                const priorityColor = bin.priority === 'high' ? '#dc3545' : 
+                                     bin.priority === 'mid' ? '#ffc107' : '#198754';
+
+                marker.bindPopup(`
+                    <div style="text-align: center; min-width: 150px;">
+                        <strong style="font-size: 1.1em;">${bin.name}</strong><br>
+                        <div style="font-size: 0.85em; color: #6c757d; margin: 0.25rem 0;">${bin.id}</div>
+                        <div style="font-size: 2em; font-weight: 700; color: ${priorityColor}; margin: 0.5rem 0;">
+                            ${bin.level}%
+                        </div>
+                        <div style="background: ${priorityColor}; color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.85em; font-weight: 600;">
+                            ${priorityText}
+                        </div>
+                        <div style="font-size: 0.85em; color: #6c757d; margin-top: 0.5rem;">
+                            <i class="fa-solid fa-location-dot"></i> ${bin.district}
+                        </div>
+                    </div>
+                `);
+
+                binMarkers.push({ marker, bin });
+            });
+        }
+
+        function renderDashboard() {
+            const highCount = bins.filter(b => b.priority === 'high').length;
+            const midCount = bins.filter(b => b.priority === 'mid').length;
+            const lowCount = bins.filter(b => b.priority === 'low').length;
+            
+            document.getElementById('high-trash-count').textContent = highCount;
+            document.getElementById('mid-trash-count').textContent = midCount;
+            document.getElementById('low-trash-count').textContent = lowCount;
+            document.getElementById('total-bins').textContent = bins.length;
+
+            districtList.innerHTML = '';
+            districts.slice(0, 7).forEach(district => {
+                const item = document.createElement('div');
+                item.className = 'district-item';
+                item.innerHTML = `
+                    <div class="district-info">
+                        <div class="district-name">
+                            <i class="fa-solid fa-leaf"></i> ${district.name.toUpperCase()}
+                        </div>
+                        <div class="district-density">${district.density} kg/km²</div>
+                    </div>
+                    <div class="district-distance">${district.bins} bins</div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    map.flyTo([district.lat, district.lon], 14);
+                });
+                
+                districtList.appendChild(item);
+            });
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function haversineDistance(c1, c2) {
+            return calculateDistance(c1.lat, c1.lon, c2.lat, c2.lon);
+        }
+
+        function buildGraph(data) {
+            graph.nodes = {};
+            graph.edges = [];
+            
+            data.features.forEach(feature => {
+                if (feature.geometry && feature.geometry.type === 'LineString') {
+                    const coords = feature.geometry.coordinates;
+                    const tags = feature.properties;
+
+                    for (let i = 0; i < coords.length; i++) {
+                        const lon = coords[i][0];
+                        const lat = coords[i][1];
+                        const nodeId = `node-${lat.toFixed(6)},${lon.toFixed(6)}`;
+                        
+                        if (!graph.nodes[nodeId]) {
+                            graph.nodes[nodeId] = {
+                                id: nodeId,
+                                lat: lat,
+                                lon: lon,
+                                adj: []
+                            };
+                        }
+                    }
+
+                    for (let i = 0; i < coords.length - 1; i++) {
+                        const startLon = coords[i][0];
+                        const startLat = coords[i][1];
+                        const endLon = coords[i + 1][0];
+                        const endLat = coords[i + 1][1];
+                        
+                        const nodeAId = `node-${startLat.toFixed(6)},${startLon.toFixed(6)}`;
+                        const nodeBId = `node-${endLat.toFixed(6)},${endLon.toFixed(6)}`;
+                        
+                        const nodeA = graph.nodes[nodeAId];
+                        const nodeB = graph.nodes[nodeBId];
+                        
+                        if (nodeA && nodeB) {
+                            const distance = haversineDistance(
+                                { lat: startLat, lon: startLon },
+                                { lat: endLat, lon: endLon }
+                            );
+                            
+                            const edge = {
+                                source: nodeAId,
+                                target: nodeBId,
+                                distance: distance,
+                                width: tags.width || 10,
+                                type: tags.highway || 'residential',
+                                id: `${nodeAId}-${nodeBId}`
+                            };
+                            
+                            graph.edges.push(edge);
+                            nodeA.adj.push({ node: nodeBId, edgeId: edge.id });
+                            
+                            if (tags.oneway !== 'yes') {
+                                const reverseEdge = {
+                                    source: nodeBId,
+                                    target: nodeAId,
+                                    distance: distance,
+                                    width: tags.width || 10,
+                                    type: tags.highway || 'residential',
+                                    id: `${nodeBId}-${nodeAId}`
+                                };
+                                
+                                graph.edges.push(reverseEdge);
+                                nodeB.adj.push({ node: nodeAId, edgeId: reverseEdge.id });
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function findNearestNode(lat, lon) {
+            let nearest = null;
+            let minDist = Infinity;
+            
+            for (let nodeId in graph.nodes) {
+                const node = graph.nodes[nodeId];
+                const dist = haversineDistance({ lat, lon }, { lat: node.lat, lon: node.lon });
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = nodeId;
+                }
+            }
+            
+            return nearest;
+        }
+
+        function dijkstra(startNodeId, endNodeId) {
+            if (!graph.nodes[startNodeId] || !graph.nodes[endNodeId]) return null;
+
+            const distances = {};
+            const previous = {};
+            const visited = new Set();
+            const pq = new FastPriorityQueue((a, b) => a.dist < b.dist);
+
+            for (let nodeId in graph.nodes) {
+                distances[nodeId] = Infinity;
+                previous[nodeId] = null;
+            }
+
+            distances[startNodeId] = 0;
+            pq.add({ nodeId: startNodeId, dist: 0 });
+
+            while (!pq.isEmpty()) {
+                const { nodeId, dist } = pq.poll();
+
+                if (visited.has(nodeId)) continue;
+                visited.add(nodeId);
+
+                if (nodeId === endNodeId) break;
+
+                const node = graph.nodes[nodeId];
+                if (!node || !node.adj) continue;
+
+                for (const adj of node.adj) {
+                    const neighborId = adj.node;
+                    if (visited.has(neighborId)) continue;
+
+                    const edge = graph.edges.find(e => e.id === adj.edgeId);
+                    if (!edge) continue;
+
+                    const alt = dist + edge.distance;
+                    if (alt < distances[neighborId]) {
+                        distances[neighborId] = alt;
+                        previous[neighborId] = nodeId;
+                        pq.add({ nodeId: neighborId, dist: alt });
+                    }
+                }
+            }
+
+            const path = [];
+            let current = endNodeId;
+            while (current !== null) {
+                path.unshift(current);
+                current = previous[current];
+            }
+
+            if (path.length === 0 || path[0] !== startNodeId) return null;
+            return path;
+        }  
+
+        function getRouteCoordinates(binA, binB) {
+            const nodeCount = Object.keys(graph.nodes).length;
+
+            // If graph is huge, fallback to direct line
+            if (nodeCount === 0 || nodeCount > 30000) {
+                console.warn("⚠️ Graph too large or missing. Using straight line route.");
+                return [[binA.lat, binA.lon], [binB.lat, binB.lon]];
+            }
+
+            const startNode = findNearestNode(binA.lat, binA.lon);
+            const endNode = findNearestNode(binB.lat, binB.lon);
+
+            if (!startNode || !endNode) {
+                console.warn("⚠️ No nearby road nodes. Using direct line.");
+                return [[binA.lat, binA.lon], [binB.lat, binB.lon]];
+            }
+
+            const path = dijkstra(startNode, endNode);
+
+            if (!path) {
+                console.warn("⚠️ Dijkstra failed. Using fallback line.");
+                return [[binA.lat, binA.lon], [binB.lat, binB.lon]];
+            }
+
+            const coordinates = path.map(nodeId => {
+                const node = graph.nodes[nodeId];
+                return [node.lat, node.lon];
+            });
+
+            return coordinates;
+        }
+
+        function optimizeRoute() {
+            showSpinner();
+            
+            setTimeout(() => {
+                const highPriority = bins.filter(b => b.priority === 'high').sort((a, b) => b.level - a.level);
+                const midPriority = bins.filter(b => b.priority === 'mid').sort((a, b) => b.level - a.level);
+                const lowPriority = bins.filter(b => b.priority === 'low').sort((a, b) => b.level - a.level);
+                
+                currentRoute = [...highPriority, ...midPriority, ...lowPriority];
+                currentBinIndex = 0;
+                
+                drawOptimizedRoute();
+                renderRoutePanel();
+                
+                dashboardPanel.classList.add('hidden');
+                routePanel.classList.remove('hidden');
+                floatingTruck.style.display = 'block';
+                
+                if (currentRoute.length > 0) {
+                    const firstBin = currentRoute[0];
+                    if (truckMarker) {
+                        map.removeLayer(truckMarker);
+                    }
+                    
+                    truckMarker = L.marker([firstBin.lat, firstBin.lon], {
+                        icon: L.icon({
+                            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                            iconSize: [35, 57],
+                            iconAnchor: [17, 57],
+                            popupAnchor: [1, -47]
+                        })
+                    }).addTo(map);
+                    
+                    truckMarker.bindPopup(`
+                        <div style="text-align: center;">
+                            <div style="font-size: 2em;"><i class="fa-solid fa-truck"></i></div>
+                            <strong>GARBAGE TRUCK</strong><br>
+                            <small>Current Location</small>
+                        </div>
+                    `);
+                }
+                
+                hideSpinner();
+            }, 800);
+        }
+
+        function drawOptimizedRoute() {
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+            }
+            
+            // Check if we have a valid graph
+            if (Object.keys(graph.nodes).length === 0) {
+                console.warn('⚠️ No road network data, using straight lines');
+                const routeCoords = currentRoute.map(bin => [bin.lat, bin.lon]);
+                routePolyline = L.polyline(routeCoords, {
+                    color: '#198754',
+                    weight: 5,
+                    opacity: 0.7,
+                    smoothFactor: 1
+                }).addTo(map);
+                
+                if (routeCoords.length > 0) {
+                    map.fitBounds(routePolyline.getBounds().pad(0.1));
+                }
+                return;
+            }
+            
+            console.log('🛣️ Building route following roads...');
+            const allRouteCoords = [];
+            
+            for (let i = 0; i < currentRoute.length - 1; i++) {
+                const binA = currentRoute[i];
+                const binB = currentRoute[i + 1];
+                
+                const segmentCoords = getRouteCoordinates(binA, binB);
+                
+                if (i === 0) {
+                    allRouteCoords.push(...segmentCoords);
+                } else {
+                    allRouteCoords.push(...segmentCoords.slice(1));
+                }
+            }
+            
+            if (allRouteCoords.length > 0) {
+                routePolyline = L.polyline(allRouteCoords, {
+                    color: '#198754',
+                    weight: 5,
+                    opacity: 0.7,
+                    smoothFactor: 1
+                }).addTo(map);
+                
+                map.fitBounds(routePolyline.getBounds().pad(0.1));
+                console.log('✅ Route drawn with', allRouteCoords.length, 'points');
+            }
+        }
+
+        function renderRoutePanel() {
+            binRouteList.innerHTML = '';
+            
+            let totalDistance = 0;
+            currentRoute.forEach((bin, index) => {
+                if (index > 0) {
+                    totalDistance += calculateDistance(
+                        currentRoute[index - 1].lat,
+                        currentRoute[index - 1].lon,
+                        bin.lat,
+                        bin.lon
+                    );
+                }
+                
+                const binCard = document.createElement('div');
+                binCard.className = `bin-card ${bin.priority}-level`;
+                
+                const levelClass = bin.priority === 'high' ? 'high' : 
+                                  bin.priority === 'mid' ? 'mid' : 'low';
+                
+                binCard.innerHTML = `
+                    <div class="bin-card-header">
+                        <div class="bin-location">
+                            <i class="fa-solid fa-location-dot"></i>
+                            ${bin.name} / ${bin.id}
+                        </div>
+                        <div class="bin-level ${levelClass}">${bin.level}%</div>
+                    </div>
+                    <div class="bin-progress">
+                        <div class="bin-progress-bar ${levelClass}" style="width: ${bin.level}%"></div>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #6c757d; margin-top: 0.5rem;">
+                        ${bin.district} • Stop ${index + 1} of ${currentRoute.length}
+                    </div>
+                `;
+                
+                binCard.addEventListener('click', () => {
+                    map.flyTo([bin.lat, bin.lon], 16);
+                    binMarkers.find(bm => bm.bin.id === bin.id).marker.openPopup();
+                });
+                
+                binRouteList.appendChild(binCard);
+            });
+            
+            document.getElementById('route-distance').textContent = `${totalDistance.toFixed(1)} km`;
+            
+            const travelTime = (totalDistance / 25) * 60;
+            const collectionTime = currentRoute.length * 3;
+            const totalMinutes = Math.round(travelTime + collectionTime);
+            
+            const now = new Date();
+            const arrival = new Date(now.getTime() + totalMinutes * 60000);
+            document.getElementById('est-arrival').textContent = arrival.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            if (currentRoute.length > 0) {
+                document.getElementById('next-stop-text').innerHTML = `
+                    <i class="fa-solid fa-leaf"></i>
+                    NEXT STOP: ${currentRoute[0].name.toUpperCase()} / ${currentRoute[0].id}
+                `;
+            }
+        }
+
+        function initEventListeners() {
+            viewRoutesBtn.addEventListener('click', optimizeRoute);
+            
+            backToDashboardBtn.addEventListener('click', () => {
+                routePanel.classList.add('hidden');
+                dashboardPanel.classList.remove('hidden');
+                floatingTruck.style.display = 'none';
+                
+                if (routePolyline) {
+                    map.removeLayer(routePolyline);
+                    routePolyline = null;
+                }
+                
+                if (truckMarker) {
+                    map.removeLayer(truckMarker);
+                    truckMarker = null;
+                }
+                
+                map.setView(BANGKOK_CENTER, DEFAULT_ZOOM);
+            });
+            
+            document.getElementById('sustainability-btn').addEventListener('click', () => {
+                alert('Sustainability Report feature coming soon!\n\nThis will show:\n• CO2 emissions saved\n• Fuel efficiency\n• Route optimization stats\n• Environmental impact metrics');
+            });
+
+            // Mobile toggle button functionality
+            const toggleBtn = document.getElementById("toggle-panel-btn");
+            if (toggleBtn) {
+                toggleBtn.addEventListener("click", () => {
+                    const isDashboardVisible = !dashboardPanel.classList.contains("hidden");
+                    const isRouteVisible = !routePanel.classList.contains("hidden");
+
+                    if (isDashboardVisible) {
+                        dashboardPanel.classList.toggle("force-open");
+                        const icon = toggleBtn.querySelector('i');
+                        if (dashboardPanel.classList.contains("force-open")) {
+                            icon.className = "fa-solid fa-times";
+                        } else {
+                            icon.className = "fa-solid fa-bars";
+                        }
+                    } 
+                    else if (isRouteVisible) {
+                        routePanel.classList.toggle("force-open");
+                        const icon = toggleBtn.querySelector('i');
+                        if (routePanel.classList.contains("force-open")) {
+                            icon.className = "fa-solid fa-times";
+                        } else {
+                            icon.className = "fa-solid fa-bars";
+                        }
+                    }
+                });
+            }
+
+            // Auto-collapse on mobile on init
+            if (window.innerWidth <= 768) {
+                dashboardPanel.classList.remove("force-open");
+                routePanel.classList.remove("force-open");
+            }
+        }
+
+        function showSpinner() {
+            spinner.classList.add('visible');
+        }
+
+        function hideSpinner() {
+            spinner.classList.remove('visible');
+        }
+
+        init();
+    });
+    </script>
+</body>
+</html>
